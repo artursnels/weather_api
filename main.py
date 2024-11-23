@@ -2,6 +2,7 @@ import json
 import random
 import sqlite3
 import time
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from starlette.requests import Request
@@ -40,12 +41,11 @@ app = FastAPI()
 
 
 
-@app.post("/upload/")
+@app.post("/upload/",
+          summary="Upload readings of weather station to the API",
+          description="Takes in data in json format. Token is mandatory for verifying whether the weather station is legitimate")
 async def upload_to_db(readings: Readings):
-    """
 
-
-    """
     readings_dict = {}
 
 
@@ -139,41 +139,6 @@ async def upload_to_db(readings: Readings):
 
 
 
-"""
-
-allowed_countries = [
-    'SE', 'LV'
-]
-
-print("Accepting IPs only from following countries: ", end="")
-print(*allowed_countries, sep=", ")
-
-
-def allow_country(request: Request):
-    if not debug:
-        ip = request.client.host
-        response = requests.get(f"http://ip-api.com/json/{ip}")
-        resp_json = response.json()
-        country_code = resp_json['countryCode']
-        isp = resp_json["isp"]
-        country = resp_json['country']
-        if country_code not in allowed_countries:
-            print(f"Refused to serve an IP from {country}, ISP: {isp}")
-            raise HTTPException(status_code=403, detail="Access restricted.")
-
-
-@app.middleware("http")
-async def check_country_restriction(request: Request, call_next):
-    try:
-        allow_country(request)
-    except HTTPException as e:
-        return Response(content=e.detail, status_code=e.status_code)
-
-    response = await call_next(request)
-    return response
-# ddddf
-"""
-
 
 
 
@@ -197,9 +162,9 @@ def get_from_db(query: str, values: tuple):
             }
         else:
             pressure_dict = {
-                "pa": pressure_pa,
-                "psi": pressure_pa / 6895,
-                "atm": pressure_pa / 101300
+                "pa": round(pressure_pa, 2),
+                "psi": round(pressure_pa / 6895, 2),
+                "atm": round(pressure_pa / 101300, 2)
             }
 
         windspeed = result[4]
@@ -213,10 +178,10 @@ def get_from_db(query: str, values: tuple):
             }
         else:
             windspeed_dict = {
-                "m/s": windspeed,
-                "km/h": windspeed * 3.6,
-                "mph": windspeed * 2.237,
-                "kts": windspeed * 1.944
+                "m/s": round(windspeed, 2),
+                "km/h": round(windspeed * 3.6, 2),
+                "mph": round(windspeed * 2.237, 2),
+                "kts": round(windspeed * 1.944, 2)
             }
 
         temperature = result[6]
@@ -229,9 +194,9 @@ def get_from_db(query: str, values: tuple):
             }
         else:
             temperature_dict = {
-                "kelvin": temperature + 273.15,
-                "celsius": temperature,
-                "fahrenheit": (temperature * (9 / 5)) + 32
+                "kelvin": round(temperature + 273.15, 2),
+                "celsius": round(temperature, 2),
+                "fahrenheit": round((temperature * (9 / 5)) + 32, 2)
             }
 
         readings_dict = {
@@ -240,15 +205,19 @@ def get_from_db(query: str, values: tuple):
             "windspeed": windspeed_dict,
             "humidity_perc": result[5],
             "temperature": temperature_dict,
-            "is_day": bool(result[7]),
+            "is_day": bool(result[7]) if result[7] is not None else None,
             "air_quality": result[8],
-            "is_raining": bool(result[9])
+            "is_raining": bool(result[9]) if result[9] is not None else None
         }
 
+        timestamp_dict = {
+            "unix": result[13],
+            "iso8601": datetime.fromtimestamp(result[13], tz=timezone.utc).isoformat()
+        }
         info_dict = {
             "reading_id": result[0],
             "station_id": result[1],
-            "timestamp_unix": result[13],
+            "timestamp": timestamp_dict,
             "country": result[10],
             "town": result[11],
             "name": result[12]
@@ -277,7 +246,7 @@ def get_from_db(query: str, values: tuple):
 
 # structure 5: /name/{name}/unix/{unix} - GETS READING OF {name} AT TIME OF {unix}, IF THERE IS NONE, GET THE NEAREST ONE
 
-@app.get("/name/{name}")
+@app.get("/name/{name}", summary="Get the latest reading of specified weather station")
 async def get_data(name: str):
     sql = """
     SELECT * FROM Readings WHERE (name) = ? ORDER BY timestamp_unix DESC LIMIT 1; 
@@ -286,7 +255,7 @@ async def get_data(name: str):
     return JSONResponse(content=response, status_code=200)
 
 
-@app.get("/country/{country}/town/{town}")
+@app.get("/country/{country}/town/{town}", summary="Get the latest reading of a random weather station in the specified country and town")
 async def get_data(country: str, town: str):
     sql = """
     SELECT * FROM Readings WHERE (country) = ? AND (town) = ?
@@ -308,8 +277,11 @@ async def get_data(country: str, town: str):
     return JSONResponse(content=get_from_db(sql, (random_station_id, )), status_code=200)
 
 
-@app.get("/name/{name}/amount/{amount}")
+@app.get("/name/{name}/amount/{amount}", summary="Get last {amount} of readings from the specified weather station")
 async def get_data(name: str, amount: int):
+
+    if amount > 300:
+        amount = 300
 
     sql = """
     SELECT * FROM Readings WHERE (name) = ? ORDER BY timestamp_unix DESC LIMIT ?
