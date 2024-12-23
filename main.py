@@ -1,17 +1,34 @@
 import json
 import random
-import sqlite3
+import mariadb
+import sys
 import time
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, RedirectResponse
 from pydantic import BaseModel
 import requests
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, orjson
 
 debug = False
+
+try:
+    conn = mariadb.connect(
+        user="weather",
+        password="db_user_passwd",
+        host="localhost",
+        port=3306,
+        database="weather"
+
+    )
+except mariadb.Error as e:
+    print(f"Error connecting to MariaDB Platform: {e}")
+    sys.exit(1)
+
+cursor = conn.cursor()
+
 
 weather = "./weather.db"
 
@@ -40,6 +57,10 @@ class Readings(BaseModel):
 app = FastAPI()
 
 
+@app.get("/", include_in_schema=False)
+async def redirect():
+    response = RedirectResponse(url='/docs')
+    return response
 
 @app.post("/upload/",
           summary="Upload readings of weather station to the API",
@@ -98,9 +119,7 @@ async def upload_to_db(readings: Readings):
 
     timestamp_unix = int(time.time())
     sql = """SELECT * FROM Stations WHERE (uuid) = ?"""
-    conn = sqlite3.connect(weather)
 
-    cursor = conn.cursor()
     cursor.execute(sql, (readings["token"],))
 
     result = cursor.fetchone()
@@ -137,17 +156,9 @@ async def upload_to_db(readings: Readings):
     return JSONResponse(content=returnable, status_code=201)
 
 
-
-
-
-
-
-
-
 def get_from_db(query: str, values: tuple):
 
-    conn = sqlite3.connect(weather)
-    cursor = conn.cursor()
+
     cursor.execute(query, values)
     results = cursor.fetchall()
     result_list = []
