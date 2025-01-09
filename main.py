@@ -1,36 +1,23 @@
 import json
 import random
+import uuid
+
+import os
+from dotenv import load_dotenv, dotenv_values
+
 import mariadb
 import sys
 import time
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import FastAPI, HTTPException
-from starlette.requests import Request
-from starlette.responses import Response, RedirectResponse
+from starlette.responses import RedirectResponse
 from pydantic import BaseModel
-import requests
 from fastapi.responses import JSONResponse, orjson
 
 debug = False
 
-try:
-    conn = mariadb.connect(
-        user="weather",
-        password="db_user_passwd",
-        host="localhost",
-        port=3306,
-        database="weather"
-
-    )
-except mariadb.Error as e:
-    print(f"Error connecting to MariaDB Platform: {e}")
-    sys.exit(1)
-
-cursor = conn.cursor()
-
-
-weather = "./weather.db"
+load_dotenv()
 
 is_raining_name = "is_raining"
 pressure_name = "pressure_pa"
@@ -62,15 +49,12 @@ async def redirect():
     response = RedirectResponse(url='/docs')
     return response
 
+
 @app.post("/upload/",
           summary="Upload readings of weather station to the API",
           description="Takes in data in json format. Token is mandatory for verifying whether the weather station is legitimate")
 async def upload_to_db(readings: Readings):
-
     readings_dict = {}
-
-
-
 
     for i in readings:
         reading_name = i[0]
@@ -117,8 +101,22 @@ async def upload_to_db(readings: Readings):
             f"Error: {air_quality_name} only accepts values 'good', 'moderate', and 'bad'. Qualitative data coming at a later date!")
         readings[air_quality_name] = None
 
+    try:
+        conn = mariadb.connect(
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            host="localhost",
+            port=3306,
+            database=os.getenv("DB_NAME")
+        )
+    except mariadb.Error as e:
+        print(f"Error connecting to MariaDB Platform: {e}")
+        sys.exit(1)
+
+    cursor = conn.cursor()
+
     timestamp_unix = int(time.time())
-    sql = """SELECT * FROM Stations WHERE (uuid) = ?"""
+    sql = """SELECT * FROM Stations WHERE (`uuid`) = ?"""
 
     cursor.execute(sql, (readings["token"],))
 
@@ -133,17 +131,38 @@ async def upload_to_db(readings: Readings):
     name = result[3]
 
     sql = f"""INSERT INTO Readings
-             (station_id, {pressure_name}, {uv_index_name}, {windspeed_name}, {humidity_name}, {temperature_name}, {is_day_name}, {air_quality_name}, {is_raining_name}, country, town, name, timestamp_unix)
+             (`station_id`, `{pressure_name}`, `{uv_index_name}`, `{windspeed_name}`, `{humidity_name}`, `{temperature_name}`, `{is_day_name}`, `{air_quality_name}`, `{is_raining_name}`, `country`, `town`, `name`, `timestamp_unix`)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
+    # uuid_value = uuid.uuid4()
+    # name_value = "meow" + str(random.randint(1, 100))
+    #
+    # # SQL query for inserting a new station
+    # sql = """
+    #     INSERT INTO Stations (`country`, `city`, `name`, `uuid`)
+    #     VALUES (?, ?, ?, ?)
+    # """
+    #
+    # # Execute the query with proper values
+    # cursor.execute(sql, ("Sweden", "Stockholm", name_value, uuid_value))
+    # conn.commit()
+
+    pressure = readings[pressure_name]
+    uv_index = readings[uv_index_name]
+    windspeed = readings[windspeed_name]
+    humidity = readings[humidity_name]
+    temperature = readings[temperature_name]
+    is_day = readings[is_day_name]
+    air_quality = readings[air_quality_name]
+    is_raining = readings[is_raining_name]
+
     cursor.execute(sql, (
-        station_id, readings["pressure_pa"], readings["uv_index"], readings["windspeed_ms"], readings["humidity_perc"],
-        readings["temperature_c"], readings["is_day"], readings["air_quality"], readings["is_raining"], country,
+        station_id, pressure, uv_index, windspeed, humidity,
+        temperature, is_day, air_quality, is_raining, country,
         town,
         name, timestamp_unix,))
     conn.commit()
-
-
+    conn.close()
 
     returnable = {
         "status": "Uploaded successfully!"
@@ -152,15 +171,27 @@ async def upload_to_db(readings: Readings):
         returnable["status"] += " However, there were some issues"
         returnable["errors"] = errors
 
-
     return JSONResponse(content=returnable, status_code=201)
 
 
-def get_from_db(query: str, values: tuple):
+def get_from_readings(query: str, values: tuple):
+    try:
+        conn = mariadb.connect(
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            host="localhost",
+            port=3306,
+            database=os.getenv("DB_NAME")
+        )
+    except mariadb.Error as e:
+        print(f"Error connecting to MariaDB Platform: {e}")
+        sys.exit(1)
 
+    cursor = conn.cursor()
 
     cursor.execute(query, values)
     results = cursor.fetchall()
+    conn.close()
     result_list = []
     for result in results:
 
@@ -241,9 +272,6 @@ def get_from_db(query: str, values: tuple):
 
         result_list.append(response_dict)
 
-
-    conn.close()
-
     return result_list
 
 
@@ -262,11 +290,12 @@ async def get_data(name: str):
     sql = """
     SELECT * FROM Readings WHERE (name) = ? ORDER BY timestamp_unix DESC LIMIT 1; 
     """
-    response = get_from_db(sql, (name,))
+    response = get_from_readings(sql, (name,))
     return JSONResponse(content=response, status_code=200)
 
 
-@app.get("/country/{country}/town/{town}", summary="Get the latest reading of a random weather station in the specified country and town")
+@app.get("/country/{country}/town/{town}",
+         summary="Get the latest reading of a random weather station in the specified country and town")
 async def get_data(country: str, town: str):
     sql = """
     SELECT * FROM Readings WHERE (country) = ? AND (town) = ?
@@ -274,23 +303,22 @@ async def get_data(country: str, town: str):
 
     station_ids = []
 
-    response = get_from_db(sql, (country, town, ))
+    response = get_from_readings(sql, (country, town,))
     for i in response:
         station_ids.append(i["info"]["station_id"])
 
     station_ids = list(set(station_ids))
 
-    random_station_id = station_ids[random.randint(0, len(station_ids)-1)]
+    random_station_id = station_ids[random.randint(0, len(station_ids) - 1)]
 
     sql = """
     SELECT * FROM READINGS WHERE (station_id) = ? ORDER BY timestamp_unix DESC LIMIT 1
     """
-    return JSONResponse(content=get_from_db(sql, (random_station_id, )), status_code=200)
+    return JSONResponse(content=get_from_readings(sql, (random_station_id,)), status_code=200)
 
 
 @app.get("/name/{name}/amount/{amount}", summary="Get last {amount} of readings from the specified weather station")
 async def get_data(name: str, amount: int):
-
     if amount > 300:
         amount = 300
 
@@ -298,9 +326,37 @@ async def get_data(name: str, amount: int):
     SELECT * FROM Readings WHERE (name) = ? ORDER BY timestamp_unix DESC LIMIT ?
     """
 
-    return JSONResponse(content=get_from_db(sql, (name, amount)))
+    return JSONResponse(content=get_from_readings(sql, (name, amount)))
 
 
+@app.get("/all-stations", summary="Get all of the stations currently being hosted")
+async def get_data():
+    sql = """
+    SELECT * FROM Stations;
+    """
 
+    try:
+        conn = mariadb.connect(
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            host="localhost",
+            port=3306,
+            database=os.getenv("DB_NAME")
+        )
+    except mariadb.Error as e:
+        print(f"Error connecting to MariaDB Platform: {e}")
+        sys.exit(1)
 
+    returnable = []
+    cursor = conn.cursor()
+    cursor.execute(sql)
+    results = cursor.fetchall()
+    for result in results:
+        station_dict = {
+            "country": result[1],
+            "city": result[2],
+            "name": result[3]
+        }
+        returnable.append(station_dict)
 
+    return JSONResponse(content=returnable, status_code=200)
