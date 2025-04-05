@@ -62,9 +62,34 @@ async def upload_to_db(readings: Readings):
         readings_dict[reading_name] = reading
     readings = readings_dict
 
+    try:
+        conn = mariadb.connect(
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            host="localhost",
+            port=3306,
+            database=os.getenv("DB_NAME")
+        )
+    except mariadb.Error as e:
+        print(f"Error connecting to MariaDB Platform: {e}")
+        sys.exit(1)
+
+    cursor = conn.cursor()
+
+    timestamp_unix = int(time.time())
+    sql = """SELECT * FROM Stations WHERE (`uuid`) = ?"""
+
+    cursor.execute(sql, (readings["token"],))
+
+    result = cursor.fetchone()
+
+    if result is None:
+        raise HTTPException(status_code=400, detail={"message": "Bad request!"})
     #########################
     #        CHECKS         #
     #########################
+
+    
 
     errors = []
     try:
