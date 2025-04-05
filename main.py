@@ -67,40 +67,6 @@ async def upload_to_db(readings: Readings):
     #########################
 
     errors = []
-
-    if readings[is_raining_name] not in (1, 0, None):
-        errors.append(f"Error: {is_raining_name} can only be 1 (true), 0 (false), or null")
-        readings[is_raining_name] = None
-
-    if readings[pressure_name] is not None and not (87_000 <= readings[pressure_name] <= 108_500):
-        errors.append(f"Error: {pressure_name} must be within the range of 87,000 and 108,500 pascals")
-        readings[pressure_name] = None
-
-    if readings[uv_index_name] is not None and not (0 <= readings[uv_index_name] <= 25):
-        errors.append(f"Error: {uv_index_name} must be within the range of 0 and 25")
-        readings[uv_index_name] = None
-
-    if readings[humidity_name] is not None and not (0 <= readings[humidity_name] <= 100):
-        errors.append(f"Error: {humidity_name} must be within the range of 0 and 100 percent")
-        readings[humidity_name] = None
-
-    if readings[temperature_name] is not None and not (-90 <= readings[temperature_name] <= 60):
-        errors.append(f"Error: {temperature_name} must be within the range of -90 and 60 degrees celsius")
-        readings[temperature_name] = None
-
-    if readings[is_day_name] not in (1, 0, None):
-        errors.append(f"Error: {is_day_name} can only be 1 (true), 0 (false), or null")
-        readings[is_day_name] = None
-
-    if readings[windspeed_name] is not None and not (0 <= readings[windspeed_name] <= 115):
-        errors.append(f"Error: {windspeed_name} can only be within the range of 0 and 115 meters per second")
-        readings[windspeed_name] = None
-
-    if readings[air_quality_name] is not None and readings[air_quality_name].lower() not in ("good", "moderate", "bad"):
-        errors.append(
-            f"Error: {air_quality_name} only accepts values 'good', 'moderate', and 'bad'. Qualitative data coming at a later date!")
-        readings[air_quality_name] = None
-
     try:
         conn = mariadb.connect(
             user=os.getenv("DB_USER"),
@@ -109,6 +75,7 @@ async def upload_to_db(readings: Readings):
             port=3306,
             database=os.getenv("DB_NAME")
         )
+
     except mariadb.Error as e:
         print(f"Error connecting to MariaDB Platform: {e}")
         sys.exit(1)
@@ -123,7 +90,42 @@ async def upload_to_db(readings: Readings):
     result = cursor.fetchone()
 
     if result is None:
-        raise HTTPException(status_code=403, detail={"message": "Invalid token!"})
+        raise HTTPException(status_code=400, detail={"message": "Bad request!"})
+
+    if readings[is_raining_name] not in (1, 0, None):
+        errors.append(f"Error: {is_raining_name} can only be 1 (true), 0 (false), or null, got {readings[is_raining_name]} instead!")
+        readings[is_raining_name] = None
+
+    if readings[pressure_name] is not None and not (87_000 <= readings[pressure_name] <= 108_500):
+        errors.append(f"Error: {pressure_name} must be within the range of 87,000 and 108,500 pascals, got {readings[pressure_name]} instead!")
+        readings[pressure_name] = None
+
+    if readings[uv_index_name] is not None and not (0 <= readings[uv_index_name] <= 25):
+        errors.append(f"Error: {uv_index_name} must be within the range of 0 and 25, got {readings[uv_index_name]} instead!")
+        readings[uv_index_name] = None
+
+    if readings[humidity_name] is not None and not (0 <= readings[humidity_name] <= 100):
+        errors.append(f"Error: {humidity_name} must be within the range of 0 and 100 percent, got {readings[humidity_name]} instead!")
+        readings[humidity_name] = None
+
+    if readings[temperature_name] is not None and not (-90 <= readings[temperature_name] <= 60):
+        errors.append(f"Error: {temperature_name} must be within the range of -90 and 60 degrees celsius, got {readings[temperature_name]} instead!")
+        readings[temperature_name] = None
+
+    if readings[is_day_name] not in (1, 0, None):
+        errors.append(f"Error: {is_day_name} can only be 1 (true), 0 (false), or null, got {readings[is_day_name]} instead!")
+        readings[is_day_name] = None
+
+    if readings[windspeed_name] is not None and not (0 <= readings[windspeed_name] <= 115):
+        errors.append(f"Error: {windspeed_name} can only be within the range of 0 and 115 meters per second, got {readings[windspeed_name]} instead!")
+        readings[windspeed_name] = None
+
+    if readings[air_quality_name] is not None and readings[air_quality_name].lower() not in ("good", "moderate", "bad"):
+        errors.append(
+            f"Error: {air_quality_name} only accepts values 'good', 'moderate', and 'bad'. Qualitative data coming at a later date!, got {readings[air_quality_name]} instead!")
+        readings[air_quality_name] = None
+
+
 
     station_id = result[0]
     country = result[1]
@@ -134,18 +136,6 @@ async def upload_to_db(readings: Readings):
              (`station_id`, `{pressure_name}`, `{uv_index_name}`, `{windspeed_name}`, `{humidity_name}`, `{temperature_name}`, `{is_day_name}`, `{air_quality_name}`, `{is_raining_name}`, `country`, `town`, `name`, `timestamp_unix`)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
-    # uuid_value = uuid.uuid4()
-    # name_value = "meow" + str(random.randint(1, 100))
-    #
-    # # SQL query for inserting a new station
-    # sql = """
-    #     INSERT INTO Stations (`country`, `city`, `name`, `uuid`)
-    #     VALUES (?, ?, ?, ?)
-    # """
-    #
-    # # Execute the query with proper values
-    # cursor.execute(sql, ("Sweden", "Stockholm", name_value, uuid_value))
-    # conn.commit()
 
     pressure = readings[pressure_name]
     uv_index = readings[uv_index_name]
