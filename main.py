@@ -327,7 +327,7 @@ async def get_data(country: str, town: str):
     random_station_id = station_ids[random.randint(0, len(station_ids) - 1)]
 
     sql = """
-    SELECT * FROM READINGS WHERE (station_id) = ? ORDER BY timestamp_unix DESC LIMIT 1
+    SELECT * FROM Readings WHERE (station_id) = ? ORDER BY timestamp_unix DESC LIMIT 1
     """
     return JSONResponse(content=get_from_readings(sql, (random_station_id,)), status_code=200)
 
