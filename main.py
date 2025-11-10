@@ -163,7 +163,7 @@ async def upload_to_db(readings: Readings):
 
     except mariadb.Error as e:
         print(f"DB error: {e}")
-        raise HTTPException(status_code=500, detail="Database error.")
+        raise HTTPException(status_code=500, detail="Database error!")
     finally:
         if conn:
             conn.close()
