@@ -131,7 +131,7 @@ async def upload_to_db(readings: Readings):
 
         if readings[air_quality_name] is not None and readings[air_quality_name].lower() not in ("good", "moderate", "bad"):
             errors.append(
-                f"Error: {air_quality_name} only accepts values 'good', 'moderate', and 'bad'. Qualitative data coming at a later date!, got {readings[air_quality_name]} instead!")
+                f"Error: {air_quality_name} only accepts values 'good', 'moderate', and 'bad'! Qualitative data coming at a later date!, got {readings[air_quality_name]} instead!")
             readings[air_quality_name] = None
 
         station_id = result[0]
