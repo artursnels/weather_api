@@ -5,6 +5,6 @@ My high school graduation project work. Written in Python using the FastAPI fram
 
 You can use the code as you wish.
 
-The API used to run on api.nelsons.lv, but as of right now it has been taken down indefinitely.  
+The API is running on api.nelsons.lv. It will be open to the public at a later date!
 
 [📄 Read the full project work here! (Latvian)](./Projekta%20Darbs%20Arturs%20N.pdf)
